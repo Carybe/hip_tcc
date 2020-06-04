@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# coding: utf-8
 #
 # Script to generate distorted text images for a captcha system.
 #
@@ -106,9 +107,18 @@ def gen_captcha(text, fontname, fontsize, file_name):
 
 	# now get the bounding box of the nonzero parts of the image
 	bbox = im.getbbox()
-	bord = min(dim[0], dim[1])/4 # a bit of a border
-	im = im.crop((bbox[0]-bord, bbox[1]-bord, bbox[2]+bord, bbox[3]+bord))
+	# bord = min(dim[0], dim[1])/4 # a bit of a border
+	# im = im.crop((bbox[0]-bord, bbox[1]-bord, bbox[2]+bord, bbox[3]+bord))
 
+###
+	center = (bbox[0] + (bbox[2]-bbox[0])/2,
+			  bbox[1] + (bbox[3]-bbox[1])/2)
+	bord = 20
+	im = im.crop((center[0] - (bord + dim[0]/2),
+				  center[1] - (bord + dim[0]/len(text)/2),
+				  center[0] + (bord + dim[0]/2),
+				  center[1] + (bord + dim[0]/len(text)/2)))
+###
 	# Create noise
 	nblock = 4
 	nsize = (im.size[0] / nblock, im.size[1] / nblock)
