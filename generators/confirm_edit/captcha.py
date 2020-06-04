@@ -52,11 +52,13 @@ except:
 nonalpha = re.compile('[^a-z]') # regex to test for suitability of words
 
 # Does X-axis wobbly copy, sandwiched between two rotates
-def wobbly_copy(src, wob, col, scale, ang):
+def wobbly_copy(src, wob, col, scale, ang, old):
     x, y = src.size
     f = random.uniform(4*scale, 5*scale)
     p = random.uniform(0, math.pi*2)
     rr = ang+random.uniform(-10, 10) # vary, but not too much
+    if old:
+        rr = ang+random.uniform(-30, 30) # vary, but not too much
     int_d = Image.new('RGB', src.size, 0) # a black rectangle
     rot = src.rotate(rr, Image.BILINEAR)
     # Do a cheap bounding-box op here to try to limit work below
@@ -77,7 +79,7 @@ def wobbly_copy(src, wob, col, scale, ang):
     return enh.enhance(2)
 
 
-def gen_captcha(text, fontname, fontsize, file_name):
+def gen_captcha(text, fontname, fontsize, file_name, old):
     """Generate a captcha image"""
     # white text on a black background
     bgcolor = 0x0
@@ -95,14 +97,17 @@ def gen_captcha(text, fontname, fontsize, file_name):
     d.text((x/2-dim[0]/2, y/2-dim[1]/2), text, font=font, fill=fgcolor)
     k = 2
     wob = 0.09*dim[1]
+    if old:
+        k = 3
+        wob = 0.20*dim[1]/k
     rot = 45
     # Apply lots of small stirring operations, rather than a few large ones
     # in order to get some uniformity of treatment, whilst
     # maintaining randomness
     for i in range(k):
-        im = wobbly_copy(im, wob, bgcolor, i*2+3, rot+0)
-        im = wobbly_copy(im, wob, bgcolor, i*2+1, rot+45)
-        im = wobbly_copy(im, wob, bgcolor, i*2+2, rot+90)
+        im = wobbly_copy(im, wob, bgcolor, i*2+3, rot+0, old)
+        im = wobbly_copy(im, wob, bgcolor, i*2+1, rot+45, old)
+        im = wobbly_copy(im, wob, bgcolor, i*2+2, rot+90, old)
         rot += 30
 
     # now get the bounding box of the nonzero parts of the image
@@ -119,20 +124,21 @@ def gen_captcha(text, fontname, fontsize, file_name):
                   center[0] + (bord + dim[0]/2),
                   center[1] + (bord + dim[0]/len(text)/2)))
 ###
-    # Create noise
-    nblock = 4
-    nsize = (im.size[0] / nblock, im.size[1] / nblock)
-    noise = Image.new('L', nsize, bgcolor)
-    data = noise.load()
-    for x in range(nsize[0]):
-        for y in range(nsize[1]):
-            r = random.randint(0, 65)
-            gradient = 70 * x / nsize[0]
-            data[x, y] = r + gradient
-    # Turn speckles into blobs
-    noise = noise.resize(im.size, Image.BILINEAR)
-    # Add to the image
-    im = ImageMath.eval('convert(convert(a, "L") / 3 + b, "RGB")', a=im, b=noise)
+    if not old:
+        # Create noise
+        nblock = 4
+        nsize = (im.size[0] / nblock, im.size[1] / nblock)
+        noise = Image.new('L', nsize, bgcolor)
+        data = noise.load()
+        for x in range(nsize[0]):
+            for y in range(nsize[1]):
+                r = random.randint(0, 65)
+                gradient = 70 * x / nsize[0]
+                data[x, y] = r + gradient
+        # Turn speckles into blobs
+        noise = noise.resize(im.size, Image.BILINEAR)
+        # Add to the image
+        im = ImageMath.eval('convert(convert(a, "L") / 3 + b, "RGB")', a=im, b=noise)
 
     # and turn into black on white
     im = ImageOps.invert(im)
@@ -214,6 +220,7 @@ def run_in_thread(object):
     opts = object[3]
     font = object[4]
     fontsize = object[5]
+    old = object[6]
 
     for i in range(count):
         word = pick_word(words, blacklist, verbose, opts.number_words, opts.min_length, opts.max_length)
@@ -227,7 +234,7 @@ def run_in_thread(object):
             filename = os.path.join(subdir, filename)
         if verbose:
             print(filename)
-        gen_captcha(word, font, fontsize, os.path.join(output, filename))
+        gen_captcha(word, font, fontsize, os.path.join(output, filename), old)
 
 if __name__ == '__main__':
     """This grabs random words from the dictionary 'words' (one
@@ -254,6 +261,8 @@ if __name__ == '__main__':
     parser.add_option("--min-length", help="Minimum length for a captcha challenge", type='int', default=1)
     parser.add_option("--max-length", help="Maximum length for a captcha challenge", type='int', default=-1)
     parser.add_option("--threads", help="Maximum number of threads to be used to generate captchas.", type='int', default=1)
+
+    parser.add_option("--old", help="Use old mediawiki captcha", action='store_true')
 
     opts, args = parser.parse_args()
 
@@ -283,6 +292,7 @@ if __name__ == '__main__':
     verbose = opts.verbose
     fontsize = opts.font_size
     threads = opts.threads
+    old = opts.old
 
     if fill:
         count = max(0, fill - len(os.listdir(output)))
@@ -307,6 +317,6 @@ if __name__ == '__main__':
     data = []
     print("Generating %s CAPTCHA images separated in %s image(s) per chunk run by %s threads..." % (count, chunks, threads))
     for i in range(0, threads):
-        data.append([chunks, words, blacklist, opts, font, fontsize])
+        data.append([chunks, words, blacklist, opts, font, fontsize, old])
 
     p.map(run_in_thread, data)
